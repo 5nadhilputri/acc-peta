@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="shortcut icon" href="favicon.png" type="image/x-icon" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>Peta Cerita Bersama</title>
+  </head>
+
+  <body>
+    <a href="#main-content" class="skip-link">Lewati ke konten utama</a>
+
+    <header class="main-header container">
+  <!-- KIRI: hamburger + judul -->
+  <div class="brand-wrap">
+    <button
+      id="drawer-button"
+      class="drawer-button"
+      aria-label="Buka navigasi menu"
+      aria-controls="navigation-drawer"
+      aria-expanded="false"
+    >
+      ☰
+    </button>
+
+    <a class="brand-name" href="#/">Peta Cerita Bersama</a>
+  </div>
+
+  <!-- TENGAH: nav (disembunyikan di mobile, tampil di desktop) -->
+  <nav
+    id="navigation-drawer"
+    class="navigation-drawer"
+    aria-label="Navigasi utama"
+    tabindex="-1"
+  >
+    <ul id="nav-list" class="nav-list">
+      <li><a href="#/">Beranda</a></li>
+      <li><a href="#/about">Tentang</a></li>
+      <li><a href="#/login">Login</a></li>
+      <li><a href="#/register">Register</a></li>
+      <li><a href="#/map">Peta</a></li>
+      <li><a href="#/add-story">Tambah Story</a></li>
+      <li><a href="#" id="logoutLink">Logout</a></li>
+    </ul>
+  </nav>
+
+  <!-- KANAN: tombol push -->
+  <button
+    id="pushToggle"
+    class="push-toggle"
+    aria-pressed="false"
+    aria-label="Toggle Push Notification"
+  >
+    🔔 Nyalakan Push
+  </button>
+</header>
+
+
+
+    <main id="main-content" class="main-content" tabindex="-1" role="main"></main>
+  </body>
+</html>
