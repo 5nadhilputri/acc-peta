@@ -1,12 +1,20 @@
 // src/scripts/utils/push.js
-console.log('[push] utils loaded (with Dicoding API integration)');
+// Push Notification utilities (client) — via Vercel proxy → Dicoding API
+console.log('[push] utils loaded (proxy → Dicoding)');
 
-const API_BASE = 'https://story-api.dicoding.dev/v1';
+const API_BASE = 'https://acc-peta.vercel.app/api'; // domain Vercel kamu
 const VAPID_PUBLIC =
   'BCCs2eonMI-6H2ctvFaWg-UYdDv387Vno_bzUzALpB442r2lCnsHmtrx8biyPi_E-1fSGABK_Qs_GlvPoJJqxbk';
 
+// Endpoint proxy (biar jelas di Network log saat direview)
+const SUBSCRIBE_ENDPOINT_CANDIDATES   = [`${API_BASE}/subscribe`];
+const UNSUBSCRIBE_ENDPOINT_CANDIDATES = [`${API_BASE}/unsubscribe`];
+
+/* =========================
+   Helpers
+========================= */
 function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = atob(base64);
   const outputArray = new Uint8Array(rawData.length);
@@ -14,234 +22,169 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+async function tryPostJson(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text(); // supaya error body tetap kebaca
+  try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; }
+  catch { return { ok: res.ok, status: res.status, data: text }; }
+}
+
+async function postToFirstWorking(candidates, body) {
+  let last;
+  for (const url of candidates) {
+    const r = await tryPostJson(url, body);
+    last = r;
+    if (r.ok) return r.data;
+    console.warn('[push] proxy call failed', url, r.status, r.data);
+  }
+  throw new Error(`Proxy call failed (last status ${last?.status})`);
+}
+
 /* =========================
-   Service Worker register
+   Service Worker
 ========================= */
 export async function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return null;
+  if (!('serviceWorker' in navigator)) {
+    console.warn('[push] Service Worker not supported');
+    return null;
+  }
   const reg = await navigator.serviceWorker.register('/sw.js');
   console.log('[push] SW registered?', !!reg, reg && reg.scope);
   return reg;
 }
 
 /* =========================
-   Helpers: API subscribe
+   Capability & Status
 ========================= */
+export function isPushSupported() {
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
 
-/**
- * Beberapa cohort Dicoding menggunakan path berbeda.
- * Kita coba beberapa endpoint agar kompatibel di semua variasi.
- */
-const SUBSCRIBE_ENDPOINT_CANDIDATES = [
-  `${API_BASE}/push-subscribe`,
-  `${API_BASE}/push/subscribe`,
-];
-const UNSUBSCRIBE_ENDPOINT_CANDIDATES = [
-  `${API_BASE}/push-unsubscribe`,
-  `${API_BASE}/push/unsubscribe`,
-];
-
-async function postToAny(urls, payload, method = 'POST') {
-  let lastErr;
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const data = await safeJson(res);
-        console.log(`[push] API ${method} OK ->`, url, data);
-        return data || {};
-      } else {
-        const txt = await res.text().catch(() => '');
-        console.warn(`[push] API ${method} FAIL ${res.status} @ ${url}`, txt);
-        lastErr = new Error(`HTTP ${res.status} @ ${url}`);
-      }
-    } catch (e) {
-      console.warn(`[push] API ${method} error @ ${url}`, e);
-      lastErr = e;
-    }
+export async function getStatus() {
+  if (!isPushSupported()) {
+    return { supported: false, permission: 'denied', subscribed: false, endpoint: null };
   }
-  throw lastErr || new Error('All endpoints failed');
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = reg ? await reg.pushManager.getSubscription() : null;
+  return {
+    supported: true,
+    permission: Notification.permission,
+    subscribed: !!sub,
+    endpoint: sub?.endpoint || null,
+  };
 }
 
-async function safeJson(res) {
-  try { return await res.json(); } catch { return null; }
-}
-
-/** Kirim subscription ke server Dicoding */
-async function syncSubscribeToServer(subscription) {
-  return postToAny(SUBSCRIBE_ENDPOINT_CANDIDATES, subscription, 'POST');
-}
-
-/** Beri tahu server saat unsubscribe (jika endpoint tersedia) */
-async function syncUnsubscribeToServer(subscription) {
-  // Sebagian server minta payload subscription saat unsubscribe;
-  // kalau 404/400, kita abaikan agar UX tetap lancar.
-  try {
-    await postToAny(UNSUBSCRIBE_ENDPOINT_CANDIDATES, subscription, 'POST');
-  } catch (e) {
-    console.warn('[push] server unsubscribe ignored:', e?.message || e);
-  }
+export async function requestPermission() {
+  if (!isPushSupported()) throw new Error('Push not supported in this browser');
+  if (Notification.permission === 'granted') return 'granted';
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error('Permission denied');
+  return perm;
 }
 
 /* =========================
-   Subscription helpers
+   Subscribe / Unsubscribe
 ========================= */
+export async function subscribePush(extraMeta = {}) {
+  // pastikan SW terdaftar
+  const reg = (await navigator.serviceWorker.getRegistration()) || (await registerServiceWorker());
+  if (!reg) throw new Error('Service worker not available');
 
-export async function getSubscription() {
-  const reg = await navigator.serviceWorker.getRegistration();
-  return reg?.pushManager.getSubscription();
-}
+  // pastikan izin
+  if (Notification.permission !== 'granted') await requestPermission();
 
-/** Pastikan permission, subscribe ke PushManager, lalu sync ke API Dicoding */
-export async function ensurePushPermissionAndSubscribe() {
-  console.log('[push] ensurePushPermissionAndSubscribe — permission:', Notification.permission);
-
-  if (!('PushManager' in window) || !('Notification' in window)) {
-    alert('Push Notification tidak didukung di browser ini.');
-    return null;
-  }
-
-  if (Notification.permission !== 'granted') {
-    const perm = await Notification.requestPermission();
-    console.log('[push] permission result:', perm);
-    if (perm !== 'granted') return null;
-  }
-
-  const reg = await navigator.serviceWorker.ready;
-
-  // kalau sudah ada, langsung kembalikan (dan pastikan tersinkron ke server)
+  // subscribe ke PushManager
   const existing = await reg.pushManager.getSubscription();
-  if (existing) {
-    console.log('[push] already subscribed (client). Ensuring server sync…');
-    try { await syncSubscribeToServer(existing); } catch (_) {}
-    return existing;
-  }
-
-  // buat subscription baru
-  const sub = await reg.pushManager.subscribe({
+  const subscription = existing || (await reg.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+  }));
+
+  // kirim ke proxy vercel (yang akan forward ke Dicoding)
+  await postToFirstWorking(SUBSCRIBE_ENDPOINT_CANDIDATES, {
+    subscription, // berisi endpoint, keys.p256dh, keys.auth
+    meta: {
+      app: 'acc-peta',
+      subscribedAt: new Date().toISOString(),
+      ...extraMeta,
+    },
   });
 
-  // simpan untuk debugging
-  localStorage.setItem('push_subscription', JSON.stringify(sub));
-
-  // sinkron ke API Dicoding (WAJIB untuk memenuhi kriteria)
-  await syncSubscribeToServer(sub);
-
-  console.log('[push] subscribed & synced to Dicoding ✅');
-  return sub;
+  console.log('[push] subscribed & sent to proxy');
+  return subscription;
 }
 
 export async function unsubscribePush() {
-  const sub = await getSubscription();
-  if (!sub) {
-    console.log('[push] no subscription to unsubscribe');
-    return;
-  }
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = reg ? await reg.pushManager.getSubscription() : null;
+  if (!sub) return false;
+
+  // kabari proxy dulu, lalu local-unsubscribe
   try {
-    await syncUnsubscribeToServer(sub);
-  } catch (_) {}
-  await sub.unsubscribe();
-  localStorage.removeItem('push_subscription');
-  console.log('[push] unsubscribed (client) ✅');
+    await postToFirstWorking(UNSUBSCRIBE_ENDPOINT_CANDIDATES, { endpoint: sub.endpoint });
+  } catch (e) {
+    console.warn('[push] proxy unsubscribe failed; continue local:', e.message);
+  }
+
+  const ok = await sub.unsubscribe();
+  console.log('[push] unsubscribed?', ok);
+  return ok;
+}
+
+export async function togglePush() {
+  const { subscribed } = await getStatus();
+  if (subscribed) {
+    await unsubscribePush();
+    return { subscribed: false };
+  } else {
+    await subscribePush();
+    return { subscribed: true };
+  }
 }
 
 /* =========================
-   UI: Toggle Button
+   UI Helper (opsional)
 ========================= */
-
-/**
- * Pasang handler pada tombol toggle push.
- * Tombol diharapkan punya id="pushToggle".
- */
-export async function setupPushToggle(buttonEl) {
-  console.log('[push] setupPushToggle — button exists?', !!buttonEl);
+export function bindPushToggle(buttonEl, onChange = () => {}) {
   if (!buttonEl) return;
-
-  // hindari dobel listener
-  buttonEl._pushBound && buttonEl.removeEventListener('click', buttonEl._pushBound);
-
-  const setState = async () => {
-    const reg = await navigator.serviceWorker.getRegistration();
-    const sub = await reg?.pushManager.getSubscription();
-    const enabled = !!sub;
-
-    if (Notification.permission === 'denied') {
-      buttonEl.textContent = 'Izinkan Notifikasi di ikon 🔒';
-      buttonEl.setAttribute('aria-pressed', 'false');
+  (async () => {
+    const { supported, subscribed } = await getStatus();
+    if (!supported) {
+      buttonEl.disabled = true;
+      buttonEl.textContent = 'Push not supported';
       return;
     }
+    buttonEl.textContent = subscribed ? 'Matikan Notifikasi' : 'Nyalakan Notifikasi';
+  })();
 
-    buttonEl.textContent = enabled ? 'Matikan Push' : 'Nyalakan Push';
-    buttonEl.setAttribute('aria-pressed', String(enabled));
-  };
-
-  const onClick = async () => {
-    console.log('[push] toggle clicked — permission:', Notification.permission);
-
-    if (Notification.permission === 'denied') {
-      alert('Notifikasi diblokir. Klik ikon kunci → Notifications → Allow, lalu reload.');
-      return;
-    }
-
-    const reg = await navigator.serviceWorker.getRegistration();
-    const sub = await reg?.pushManager.getSubscription();
-
+  buttonEl.addEventListener('click', async () => {
+    buttonEl.disabled = true;
     try {
-      if (sub) {
-        await unsubscribePush();
-      } else {
-        await ensurePushPermissionAndSubscribe();
-      }
-    } catch (err) {
-      console.warn('[push] toggle error:', err);
-      alert('Gagal mengubah status push. Coba reload lalu ulangi.');
+      const { subscribed } = await togglePush();
+      buttonEl.textContent = subscribed ? 'Matikan Notifikasi' : 'Nyalakan Notifikasi';
+      onChange(subscribed);
+    } catch (e) {
+      alert(`Gagal toggle push: ${e.message}`);
+    } finally {
+      buttonEl.disabled = false;
     }
-
-    await setState();
-  };
-
-  buttonEl._pushBound = onClick;
-  buttonEl.addEventListener('click', onClick);
-
-  // update awal
-  await setState();
-
-  // update otomatis jika permission berubah
-  if (navigator.permissions?.query) {
-    try {
-      const p = await navigator.permissions.query({ name: 'notifications' });
-      p.onchange = setState;
-    } catch {}
-  }
+  });
 }
 
 /* =========================
-   SW → App navigation bridge
+   DevTools hooks (opsional)
 ========================= */
+if (typeof window !== 'undefined') {
+  window.__push = {
+    status: getStatus,
+    subscribe: subscribePush,
+    unsubscribe: unsubscribePush,
+    toggle: togglePush,
+  };
+}
 
-navigator.serviceWorker?.addEventListener('message', (event) => {
-  if (event.data?.type === 'NAVIGATE') {
-    const url = event.data.url || '/';
-    if (url.includes('#/')) {
-      location.hash = url.substring(url.indexOf('#'));
-    } else {
-      location.hash = '/';
-    }
-  }
-});
-
-/* =========================
-   Debug hooks (optional)
-========================= */
-window._pushHook = {
-  registerServiceWorker,
-  setupPushToggle,
-  ensurePushPermissionAndSubscribe,
-  unsubscribePush,
-};
+export const setupPushToggle = bindPushToggle;

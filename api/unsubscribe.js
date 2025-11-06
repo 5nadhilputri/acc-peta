@@ -1,9 +1,27 @@
 // /api/unsubscribe.js
-// Proxy: meneruskan unsubscribe ke API Dicoding (kalau endpoint tersedia)
+// Proxy: meneruskan unsubscribe (endpoint) ke Dicoding API + CORS preflight
 
-export default async function handler(req, res) {
+const ALLOW_ORIGIN = '*'; // saat dev bisa '*', produksi bisa ganti ke domainmu
+
+function setCORS(res) {
+  res.setHeader('Access-Control-Allow-Origin', ALLOW_ORIGIN);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+module.exports = async (req, res) => {
+  setCORS(res);
+
+  // Preflight
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method Not Allowed' });
+    res.status(405).json({ message: 'Method Not Allowed' });
+    return;
   }
 
   try {
@@ -18,33 +36,37 @@ export default async function handler(req, res) {
     ];
 
     let lastStatus = 502;
-    let lastText = 'No upstream';
+    let lastText = 'No upstream response';
 
     for (const url of targets) {
       try {
         const r = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(payload), // { endpoint }
         });
         const text = await r.text();
         lastStatus = r.status;
         lastText = text;
 
         if (r.ok) {
-          try {
-            return res.status(r.status).json(JSON.parse(text));
-          } catch {
-            return res.status(r.status).send(text);
-          }
+          res.status(r.status);
+          setCORS(res);
+          res.setHeader('Content-Type', r.headers.get('content-type') || 'text/plain');
+          try { res.send(JSON.parse(text)); } catch { res.send(text); }
+          return;
         }
       } catch (e) {
         lastText = String(e);
       }
     }
 
-    return res.status(lastStatus).json({ message: 'Upstream error', detail: lastText });
+    res.status(lastStatus);
+    setCORS(res);
+    res.json({ message: 'Upstream error', detail: lastText });
   } catch (e) {
-    return res.status(400).json({ message: 'Bad payload', error: String(e) });
+    res.status(400);
+    setCORS(res);
+    res.json({ message: 'Bad payload', error: String(e) });
   }
-}
+};
