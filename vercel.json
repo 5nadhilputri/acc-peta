@@ -1,5 +1,4 @@
 {
-  "framework": "none",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
