@@ -5,6 +5,7 @@ import RegisterPage from '../pages/auth/register-page';
 import MapPage from '../pages/map/map-page';
 import AddStoryPage from '../pages/add-story/add-story-page';
 import DetailStory from '../pages/detail-story/detail-story-page';
+import OfflinePage from '../pages/offline.js'; 
 
 const routes = {
   '/': HomePage,
@@ -13,7 +14,8 @@ const routes = {
   '/register': RegisterPage,
   '/map': MapPage,
   '/add-story': AddStoryPage,
-  '/detail-story': DetailStory, // 
+  '/detail-story': DetailStory,
+  '/offline': OfflinePage, 
 };
 
 export default routes;

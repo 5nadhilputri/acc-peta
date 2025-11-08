@@ -1,0 +1,57 @@
+{
+  "name": "Peta Cerita Bersama",
+  "short_name": "PetaCerita",
+  "description": "Berbagi cerita dan lokasi di peta interaktif. Tambahkan kisahmu dan lihat pengalaman dari seluruh Indonesia.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#0ea5e9",
+  "background_color": "#ffffff",
+  "scope": "/",
+  "lang": "id-ID",
+
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+
+  "screenshots": [
+  {
+    "src": "ss/screenshoot-beranda.png",
+    "sizes": "1919x882",
+    "type": "image/png",
+    "label": "Halaman Beranda"
+  },
+  {
+    "src": "ss/screenshoot-about.png",
+    "sizes": "1919x882",
+    "type": "image/png",
+    "label": "Halaman Tentang"
+  }
+],
+
+  "shortcuts": [
+    {
+      "name": "Lihat Cerita di Peta",
+      "short_name": "Lihat Peta",
+      "description": "Langsung buka halaman peta untuk jelajahi cerita.",
+      "url": "/#/map",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Tambah Cerita Baru",
+      "short_name": "Tambah Cerita",
+      "description": "Tambahkan kisah atau pengalaman baru.",
+      "url": "/#/add-story",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

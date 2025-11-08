@@ -1,7 +1,4 @@
-// /api/unsubscribe.js
-// Proxy: meneruskan unsubscribe (endpoint) ke Dicoding API + CORS preflight
-
-const ALLOW_ORIGIN = '*'; // saat dev bisa '*', produksi bisa ganti ke domainmu
+const ALLOW_ORIGIN = '*';
 
 function setCORS(res) {
   res.setHeader('Access-Control-Allow-Origin', ALLOW_ORIGIN);
@@ -13,7 +10,6 @@ function setCORS(res) {
 module.exports = async (req, res) => {
   setCORS(res);
 
-  // Preflight
   if (req.method === 'OPTIONS') {
     res.status(204).end();
     return;

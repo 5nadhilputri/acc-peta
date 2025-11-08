@@ -1,5 +1,4 @@
-import { getAllStories } from '../../data/api';
-
+import { addStory } from '../../utils/idb.js';
 export default class MapPage {
   async render() {
     return `
@@ -62,9 +61,21 @@ export default class MapPage {
             li.innerHTML = `
               <img src="${story.photoUrl}" alt="${story.name}" width="80" style="border-radius:6px; margin-right:10px; vertical-align:middle;" />
               <strong>${story.name}</strong> — ${story.description}<br>
-              <small><em>Dibuat pada: ${new Date(story.createdAt).toLocaleDateString()}</em></small>
+              <small><em>Dibuat pada: ${new Date(story.createdAt).toLocaleDateString()}</em></small><br>
+              <button class="save-btn" data-id="${story.id}">Simpan Offline</button>
             `;
             storyList.appendChild(li);
+          }
+        });
+
+        storyList.addEventListener('click', async (e) => {
+          if (e.target.classList.contains('save-btn')) {
+            const id = e.target.dataset.id;
+            const story = listStory.find((s) => s.id === id);
+            if (story) {
+              await addStory(story);
+              alert('Cerita disimpan untuk offline!');
+            }
           }
         });
       } catch (error) {

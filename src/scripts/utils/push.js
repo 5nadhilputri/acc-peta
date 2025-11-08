@@ -1,25 +1,19 @@
 // src/scripts/utils/push.js
-// Push Notification utilities (client) — via Vercel proxy → Dicoding API
-console.log('[push] utils loaded (proxy → Dicoding)');
+console.log('[push] utils loaded (fixed proxy)');
 
-const API_BASE = 'https://acc-peta.vercel.app/api'; // domain Vercel kamu
+// === BASE API (ubah ke domain Vercel kamu) ===
+const API_BASE = 'https://acc-peta.vercel.app/api';
 const VAPID_PUBLIC =
   'BCCs2eonMI-6H2ctvFaWg-UYdDv387Vno_bzUzALpB442r2lCnsHmtrx8biyPi_E-1fSGABK_Qs_GlvPoJJqxbk';
 
-// Endpoint proxy (biar jelas di Network log saat direview)
-const SUBSCRIBE_ENDPOINT_CANDIDATES   = [`${API_BASE}/subscribe`];
-const UNSUBSCRIBE_ENDPOINT_CANDIDATES = [`${API_BASE}/unsubscribe`];
+const SUBSCRIBE_URL = `${API_BASE}/subscribe`;
+const UNSUBSCRIBE_URL = `${API_BASE}/unsubscribe`;
 
-/* =========================
-   Helpers
-========================= */
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
-  return outputArray;
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
 
 async function tryPostJson(url, body) {
@@ -28,163 +22,80 @@ async function tryPostJson(url, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const text = await res.text(); // supaya error body tetap kebaca
+  const text = await res.text();
   try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; }
   catch { return { ok: res.ok, status: res.status, data: text }; }
 }
 
-async function postToFirstWorking(candidates, body) {
-  let last;
-  for (const url of candidates) {
-    const r = await tryPostJson(url, body);
-    last = r;
-    if (r.ok) return r.data;
-    console.warn('[push] proxy call failed', url, r.status, r.data);
-  }
-  throw new Error(`Proxy call failed (last status ${last?.status})`);
-}
-
-/* =========================
-   Service Worker
-========================= */
 export async function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) {
-    console.warn('[push] Service Worker not supported');
-    return null;
-  }
+  if (!('serviceWorker' in navigator)) return null;
   const reg = await navigator.serviceWorker.register('/sw.js');
-  console.log('[push] SW registered?', !!reg, reg && reg.scope);
+  console.log('[push] SW registered?', !!reg, reg?.scope);
   return reg;
 }
 
-/* =========================
-   Capability & Status
-========================= */
-export function isPushSupported() {
-  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+export async function ensurePermission() {
+  if (!('Notification' in window)) throw new Error('Browser tidak mendukung Notification');
+  let perm = Notification.permission;
+  if (perm === 'default') perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error('Izin notifikasi ditolak');
 }
 
-export async function getStatus() {
-  if (!isPushSupported()) {
-    return { supported: false, permission: 'denied', subscribed: false, endpoint: null };
-  }
-  const reg = await navigator.serviceWorker.getRegistration();
-  const sub = reg ? await reg.pushManager.getSubscription() : null;
-  return {
-    supported: true,
-    permission: Notification.permission,
-    subscribed: !!sub,
-    endpoint: sub?.endpoint || null,
-  };
-}
-
-export async function requestPermission() {
-  if (!isPushSupported()) throw new Error('Push not supported in this browser');
-  if (Notification.permission === 'granted') return 'granted';
-  const perm = await Notification.requestPermission();
-  if (perm !== 'granted') throw new Error('Permission denied');
-  return perm;
-}
-
-/* =========================
-   Subscribe / Unsubscribe
-========================= */
-export async function subscribePush(extraMeta = {}) {
-  // pastikan SW terdaftar
-  const reg = (await navigator.serviceWorker.getRegistration()) || (await registerServiceWorker());
-  if (!reg) throw new Error('Service worker not available');
-
-  // pastikan izin
-  if (Notification.permission !== 'granted') await requestPermission();
-
-  // subscribe ke PushManager
+async function getOrCreateSubscription(reg) {
   const existing = await reg.pushManager.getSubscription();
-  const subscription = existing || (await reg.pushManager.subscribe({
+  if (existing) return existing;
+  return reg.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
-  }));
-
-  // kirim ke proxy vercel (yang akan forward ke Dicoding)
-  await postToFirstWorking(SUBSCRIBE_ENDPOINT_CANDIDATES, {
-    subscription, // berisi endpoint, keys.p256dh, keys.auth
-    meta: {
-      app: 'acc-peta',
-      subscribedAt: new Date().toISOString(),
-      ...extraMeta,
-    },
   });
-
-  console.log('[push] subscribed & sent to proxy');
-  return subscription;
 }
 
-export async function unsubscribePush() {
-  const reg = await navigator.serviceWorker.getRegistration();
-  const sub = reg ? await reg.pushManager.getSubscription() : null;
-  if (!sub) return false;
+async function sendSubscription(sub, action = 'subscribe') {
+  const url = action === 'unsubscribe' ? UNSUBSCRIBE_URL : SUBSCRIBE_URL;
+  const body = action === 'unsubscribe' ? { endpoint: sub.endpoint } : sub.toJSON();
+  const r = await tryPostJson(url, body);
+  if (!r.ok) throw new Error(`Server responded ${r.status}`);
+  console.log(`[push] ${action} success`, r.data);
+  return r;
+}
 
-  // kabari proxy dulu, lalu local-unsubscribe
-  try {
-    await postToFirstWorking(UNSUBSCRIBE_ENDPOINT_CANDIDATES, { endpoint: sub.endpoint });
-  } catch (e) {
-    console.warn('[push] proxy unsubscribe failed; continue local:', e.message);
+export async function setupPushToggle(btn) {
+  if (!btn) return;
+  if (btn._bound) return;
+  btn._bound = true;
+
+  const reg = await registerServiceWorker();
+  if (!reg) {
+    btn.disabled = true;
+    btn.textContent = 'Push tidak didukung';
+    return;
   }
 
-  const ok = await sub.unsubscribe();
-  console.log('[push] unsubscribed?', ok);
-  return ok;
-}
-
-export async function togglePush() {
-  const { subscribed } = await getStatus();
-  if (subscribed) {
-    await unsubscribePush();
-    return { subscribed: false };
-  } else {
-    await subscribePush();
-    return { subscribed: true };
+  async function refreshLabel() {
+    const sub = await reg.pushManager.getSubscription();
+    btn.textContent = sub ? 'Matikan Notifikasi' : 'Nyalakan Notifikasi';
+    btn.setAttribute('aria-pressed', String(!!sub));
   }
-}
 
-/* =========================
-   UI Helper (opsional)
-========================= */
-export function bindPushToggle(buttonEl, onChange = () => {}) {
-  if (!buttonEl) return;
-  (async () => {
-    const { supported, subscribed } = await getStatus();
-    if (!supported) {
-      buttonEl.disabled = true;
-      buttonEl.textContent = 'Push not supported';
-      return;
-    }
-    buttonEl.textContent = subscribed ? 'Matikan Notifikasi' : 'Nyalakan Notifikasi';
-  })();
-
-  buttonEl.addEventListener('click', async () => {
-    buttonEl.disabled = true;
+  btn.addEventListener('click', async () => {
     try {
-      const { subscribed } = await togglePush();
-      buttonEl.textContent = subscribed ? 'Matikan Notifikasi' : 'Nyalakan Notifikasi';
-      onChange(subscribed);
+      await ensurePermission();
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await sendSubscription(sub, 'unsubscribe');
+        await sub.unsubscribe();
+        alert('Notifikasi dimatikan');
+      } else {
+        const newSub = await getOrCreateSubscription(reg);
+        await sendSubscription(newSub, 'subscribe');
+        alert('Notifikasi diaktifkan');
+      }
+      await refreshLabel();
     } catch (e) {
+      console.error('[push] toggle error:', e);
       alert(`Gagal toggle push: ${e.message}`);
-    } finally {
-      buttonEl.disabled = false;
     }
   });
-}
 
-/* =========================
-   DevTools hooks (opsional)
-========================= */
-if (typeof window !== 'undefined') {
-  window.__push = {
-    status: getStatus,
-    subscribe: subscribePush,
-    unsubscribe: unsubscribePush,
-    toggle: togglePush,
-  };
+  await refreshLabel();
 }
-
-export const setupPushToggle = bindPushToggle;

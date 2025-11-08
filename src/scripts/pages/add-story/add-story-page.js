@@ -1,3 +1,6 @@
+import { queueStory } from '../../utils/idb.js'; // fungsi untuk simpan ke outbox
+import { registerBackgroundSync } from '../../utils/sync.js'; // nanti digunakan untuk sync otomatis
+
 export default class AddStoryPage {
   async render() {
     return `
@@ -28,23 +31,13 @@ export default class AddStoryPage {
         const leafletCSS = document.createElement('link');
         leafletCSS.rel = 'stylesheet';
         leafletCSS.href = 'https://unpkg.com/leaflet/dist/leaflet.css';
-        leafletCSS.crossOrigin = ''; 
         document.head.appendChild(leafletCSS);
       }
 
       if (!window.L) {
         const leafletScript = document.createElement('script');
         leafletScript.src = 'https://unpkg.com/leaflet/dist/leaflet.js';
-        leafletScript.crossOrigin = '';
-
-        leafletScript.onload = () => {
-          setTimeout(() => this._initMap(), 200);
-        };
-
-        leafletScript.onerror = () => {
-          alert('Gagal memuat library Leaflet. Periksa koneksi internet kamu.');
-        };
-
+        leafletScript.onload = () => setTimeout(() => this._initMap(), 200);
         document.body.appendChild(leafletScript);
       } else {
         setTimeout(() => this._initMap(), 200);
@@ -57,22 +50,9 @@ export default class AddStoryPage {
 
   _initMap() {
     try {
-      const mapContainer = document.getElementById('map');
-      if (!mapContainer) {
-        console.error('Elemen peta tidak ditemukan di DOM!');
-        alert('Gagal menemukan elemen peta di halaman.');
-        return;
-      }
-
-      if (typeof L === 'undefined') {
-        alert('Gagal memuat peta. Silakan refresh halaman.');
-        return;
-      }
-
-      const map = L.map(mapContainer).setView([-2.5, 118], 5);
+      const map = L.map('map').setView([-2.5, 118], 5);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+        attribution: '&copy; OpenStreetMap contributors',
       }).addTo(map);
 
       let selectedLat = null;
@@ -92,7 +72,6 @@ export default class AddStoryPage {
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
-
         const token = localStorage.getItem('token');
         if (!token) {
           alert('Silakan login terlebih dahulu.');
@@ -108,28 +87,58 @@ export default class AddStoryPage {
           return;
         }
 
-        const formData = new FormData();
-        formData.append('photo', photo);
-        formData.append('description', description);
-        formData.append('lat', selectedLat);
-        formData.append('lon', selectedLon);
+        const payload = {
+          id: Date.now(),
+          description,
+          lat: selectedLat,
+          lon: selectedLon,
+          createdAt: new Date().toISOString(),
+          photoBlob: photo,
+          photoName: photo.name,
+        };
 
-        try {
-          const response = await fetch('https://story-api.dicoding.dev/v1/stories', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-          });
+       // ===== CEK ONLINE / OFFLINE DENGAN FETCH TEST =====
+let online = navigator.onLine;
+try {
+  const test = await fetch('https://story-api.dicoding.dev/v1/stories?limit=1', { method: 'HEAD', cache: 'no-store' });
+  online = test.ok;
+} catch (_) {
+  online = false;
+}
 
-          const result = await response.json();
-          if (result.error) throw new Error(result.message);
+if (online && token) {
+  try {
+    const formData = new FormData();
+    formData.append('photo', photo);
+    formData.append('description', description);
+    formData.append('lat', selectedLat);
+    formData.append('lon', selectedLon);
 
-          alert('Story berhasil ditambahkan!');
-          location.hash = '/map';
-        } catch (err) {
-          console.error('Gagal menambah story:', err);
-          alert(`Gagal menambah story: ${err.message}`);
-        }
+    const response = await fetch('https://story-api.dicoding.dev/v1/stories', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+
+    const result = await response.json();
+    if (result.error) throw new Error(result.message);
+
+    alert('✅ Story berhasil dikirim!');
+    location.hash = '/map';
+  } catch (err) {
+    console.warn('Gagal online, simpan offline:', err);
+    await queueStory(payload);
+    registerBackgroundSync();
+    alert('📦 Cerita disimpan offline dan akan dikirim otomatis saat online.');
+  }
+} else {
+  // === MODE OFFLINE ===
+  console.warn('[add-story] Tidak ada koneksi, simpan ke outbox.');
+  await queueStory(payload);
+  registerBackgroundSync();
+  alert('📦 Cerita disimpan offline dan akan dikirim otomatis saat online.');
+}
+
       });
     } catch (err) {
       console.error('Error saat inisialisasi Leaflet:', err);

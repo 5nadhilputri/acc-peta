@@ -1,19 +1,16 @@
-// /api/subscribe.js
-// Proxy: meneruskan PushSubscription ke Dicoding API + CORS preflight
-
-const ALLOW_ORIGIN = '*'; // saat dev bisa '*', produksi bisa ganti ke domainmu
+// api/subscribe.js
+const ALLOW_ORIGIN = '*';
 
 function setCORS(res) {
   res.setHeader('Access-Control-Allow-Origin', ALLOW_ORIGIN);
-  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Vary', 'Origin');
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   setCORS(res);
 
-  // Preflight
   if (req.method === 'OPTIONS') {
     res.status(204).end();
     return;
@@ -25,48 +22,37 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const payload =
-      typeof req.body === 'object' && req.body !== null
-        ? req.body
-        : JSON.parse(req.body || '{}');
-
-    const targets = [
-      'https://story-api.dicoding.dev/v1/push-subscribe',
+    const payload = typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}');
+    const endpoints = [
       'https://story-api.dicoding.dev/v1/push/subscribe',
+      'https://story-api.dicoding.dev/v1/push-subscribe',
     ];
 
-    let lastStatus = 502;
-    let lastText = 'No upstream response';
-
-    for (const url of targets) {
+    for (const url of endpoints) {
       try {
-        const r = await fetch(url, {
+        const f = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        const text = await r.text();
-        lastStatus = r.status;
-        lastText = text;
 
-        if (r.ok) {
-          res.status(r.status);
+        const text = await f.text();
+        if (f.ok) {
           setCORS(res);
-          res.setHeader('Content-Type', r.headers.get('content-type') || 'text/plain');
-          try { res.send(JSON.parse(text)); } catch { res.send(text); }
+          try {
+            res.status(f.status).json(JSON.parse(text));
+          } catch {
+            res.status(f.status).send(text);
+          }
           return;
         }
       } catch (e) {
-        lastText = String(e);
+        console.warn('[api] Failed proxy to', url, e);
       }
     }
 
-    res.status(lastStatus);
-    setCORS(res);
-    res.json({ message: 'Upstream error', detail: lastText });
-  } catch (e) {
-    res.status(400);
-    setCORS(res);
-    res.json({ message: 'Bad payload', error: String(e) });
+    res.status(502).json({ message: 'Upstream failed to respond' });
+  } catch (err) {
+    res.status(400).json({ message: 'Bad payload', error: String(err) });
   }
-};
+}

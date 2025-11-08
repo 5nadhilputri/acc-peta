@@ -494,27 +494,23 @@ button:focus {
   to { opacity: 1; }
 }
 
-/* ====== Header & Push Button Layout Fix ====== */
 .main-header {
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 12px 16px;
-  /* pastikan tidak ada element tak terlihat yang menumpuk di atas header */
   position: relative;
 }
 
 .navigation-drawer {
-  /* biar menu di tengah dan space terisi */
   flex: 1;
   display: flex;
   justify-content: center;
 }
 
-/* Tombol Push: JANGAN absolute; biar flex yang atur posisi */
 .push-toggle {
-  position: static;            /* <— penting: bukan absolute */
-  margin-left: auto;           /* dorong ke paling kanan */
+  position: static;           
+  margin-left: auto;          
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -525,24 +521,22 @@ button:focus {
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  z-index: 10;                 /* jaga-jaga kalau ada overlay */
-  pointer-events: auto;        /* pastikan area klik aktif */
+  z-index: 10;                
+  pointer-events: auto;        
 }
 
 .push-toggle[aria-pressed="true"] {
-  background: #10b981;         /* "Matikan Push" */
+  background: #10b981;         
 }
 
-/* Fokus yang jelas untuk aksesibilitas */
 .push-toggle:focus {
   outline: 3px solid #2563eb;
   outline-offset: 2px;
 }
 
-/* ====== Responsive ====== */
 @media (max-width: 1024px) {
   .main-header {
-    flex-wrap: wrap;           /* header boleh turun baris */
+    flex-wrap: wrap;           
   }
   .navigation-drawer {
     order: 2;
@@ -554,18 +548,17 @@ button:focus {
   }
   .push-toggle {
     order: 3;
-    margin-left: auto;         /* tetap di kanan */
+    margin-left: auto;         
   }
 }
 
-/* ====== Header Layout Refinement ====== */
 .main-header {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* brand kiri, nav + tombol kanan */
+  justify-content: space-between; 
   gap: 16px;
   padding: 12px 24px;
-  background-color: #cbe6ec; /* warna latar seperti sekarang */
+  background-color: #cbe6ec; 
 }
 
 /* Brand tetap di kiri */
@@ -576,14 +569,12 @@ button:focus {
   color: #1e293b;
 }
 
-/* Bungkus nav + tombol ke kanan */
 .header-right {
   display: flex;
   align-items: center;
-  gap: 20px; /* jarak antar nav dan tombol */
+  gap: 20px; 
 }
 
-/* Navigation */
 .navigation-drawer {
   display: flex;
   gap: 20px;
@@ -603,7 +594,6 @@ button:focus {
   font-weight: 500;
 }
 
-/* Tombol Push */
 .push-toggle {
   display: inline-flex;
   align-items: center;
@@ -628,7 +618,6 @@ button:focus {
   outline-offset: 2px;
 }
 
-/* Responsif */
 @media (max-width: 768px) {
   .main-header {
     flex-wrap: wrap;
@@ -646,17 +635,15 @@ button:focus {
   }
 }
 
-/* ===== Layout header umum ===== */
 .main-header {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* kiri = brand-wrap, tengah = nav, kanan = push */
+  justify-content: space-between; 
   gap: 16px;
   padding: 12px 16px;
   background: #cbe6ec;
 }
 
-/* KIRI: hamburger + judul berdampingan */
 .brand-wrap {
   display: flex;
   align-items: center;
@@ -670,7 +657,6 @@ button:focus {
   color: #1e293b;
 }
 
-/* TENGAH: nav horizontal (desktop) */
 .navigation-drawer { display: flex; }
 .nav-list {
   list-style: none;
@@ -681,7 +667,6 @@ button:focus {
 }
 .nav-list a { text-decoration: none; color: #1e293b; font-weight: 500; }
 
-/* KANAN: tombol push */
 .push-toggle {
   position: static;
   display: inline-flex;
@@ -698,7 +683,6 @@ button:focus {
 .push-toggle[aria-pressed="true"] { background: #10b981; }
 .push-toggle:focus { outline: 3px solid #2563eb; outline-offset: 2px; }
 
-/* Hamburger: sembunyikan di desktop, tampilkan di mobile */
 .drawer-button {
   display: none;
   height: 36px;
@@ -709,32 +693,26 @@ button:focus {
   cursor: pointer;
 }
 
-/* ===== Responsive ≤ 768px ===== */
 @media (max-width: 768px) {
   .main-header {
     gap: 12px;
   }
 
-  /* Tampilkan hamburger di samping judul, sembunyikan nav */
   .drawer-button { display: inline-flex; }
   .navigation-drawer { display: none; }
 
-  /* Tombol push tetap di kanan header */
   .push-toggle { margin-left: auto; }
 }
 
-/* ===== Drawer behavior (mobile) ===== */
 @media (max-width: 768px) {
-  /* default: nav disembunyikan */
   .navigation-drawer {
     display: none;
   }
 
-  /* saat dibuka */
   .navigation-drawer.is-open {
     display: block;
     position: absolute;
-    top: 64px;            /* tinggi header kira-kira */
+    top: 64px;            
     left: 0;
     right: 0;
     background: #ffffff;
@@ -749,7 +727,6 @@ button:focus {
     flex-direction: column;
     gap: 12px;
   }
-
-  /* tombol hamburger selalu terlihat di mobile */
   .drawer-button { display: inline-flex; }
 }
+

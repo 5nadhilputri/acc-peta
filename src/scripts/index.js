@@ -1,11 +1,14 @@
+// src/scripts/index.js
 import '../styles/styles.css';
 
 import App from './pages/app';
 import {
   registerServiceWorker,
   setupPushToggle,
-  ensurePushPermissionAndSubscribe,
 } from './utils/push';
+
+import { registerBackgroundSync } from './utils/sync.js';
+
 
 document.addEventListener('DOMContentLoaded', async () => {
   const app = new App({
@@ -23,10 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function setDrawer(open) {
     nav.classList.toggle('is-open', open);
     drawerBtn.setAttribute('aria-expanded', String(open));
-    if (open) {
-      // arahkan fokus ke nav untuk aksesibilitas
-      nav.focus();
-    }
+    if (open) nav.focus();
   }
 
   if (drawerBtn && nav) {
@@ -35,7 +35,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       setDrawer(open);
     });
 
-    // klik di luar nav menutup drawer
     document.addEventListener('click', (e) => {
       if (!nav.classList.contains('is-open')) return;
       const isInsideNav = nav.contains(e.target);
@@ -43,7 +42,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!isInsideNav && !isButton) setDrawer(false);
     });
 
-    // ESC untuk menutup
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && nav.classList.contains('is-open')) {
         setDrawer(false);
@@ -51,7 +49,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
-    // pindah halaman (hashchange) → otomatis ditutup
     window.addEventListener('hashchange', () => setDrawer(false));
   }
 
@@ -70,40 +67,48 @@ document.addEventListener('DOMContentLoaded', async () => {
   /* ===== Router re-render ===== */
   window.addEventListener('hashchange', async () => {
     await app.renderPage();
-    // rebind push button jika perlu (kalau header tidak di-render ulang, ini no-op)
     const btn = document.getElementById('pushToggle');
     if (btn && !btn._pushBound) await setupPushToggle(btn);
   });
 
-  /* ===== Nav visibility (punyamu) ===== */
-  const logoutLink = document.querySelector('#logoutLink');
-  const loginLink = document.querySelector('a[href="#/login"]');
+  /* ===== Nav visibility ===== */
+  const logoutLink   = document.querySelector('#logoutLink');
+  const loginLink    = document.querySelector('a[href="#/login"]');
   const registerLink = document.querySelector('a[href="#/register"]');
   const addStoryLink = document.querySelector('a[href="#/add-story"]');
-  const mapLink = document.querySelector('a[href="#/map"]');
+  const mapLink      = document.querySelector('a[href="#/map"]');
+  const offlineLink  = document.querySelector('a[href="#/offline"]');
+
+  function show(el, on = true) {
+    if (!el) return;
+    el.style.display = on ? 'inline-block' : 'none';
+  }
 
   function updateNavVisibility() {
     const token = localStorage.getItem('token');
+
+    // offline menu SELALU ada
+    show(offlineLink, true);
+
     if (token) {
-      loginLink.style.display = 'none';
-      registerLink.style.display = 'none';
-      addStoryLink.style.display = 'inline-block';
-      mapLink.style.display = 'inline-block';
-      logoutLink.style.display = 'inline-block';
+      show(loginLink,    false);
+      show(registerLink, false);
+      show(addStoryLink, true);
+      show(mapLink,      true);
+      show(logoutLink,   true);
     } else {
-      loginLink.style.display = 'inline-block';
-      registerLink.style.display = 'inline-block';
-      addStoryLink.style.display = 'none';
-      mapLink.style.display = 'none';
-      logoutLink.style.display = 'none';
+      show(loginLink,    true);
+      show(registerLink, true);
+      show(addStoryLink, false);
+      show(mapLink,      false);
+      show(logoutLink,   false);
     }
   }
 
   if (logoutLink) {
     logoutLink.addEventListener('click', (event) => {
       event.preventDefault();
-      const confirmLogout = confirm('Apakah kamu yakin ingin logout?');
-      if (confirmLogout) {
+      if (confirm('Apakah kamu yakin ingin logout?')) {
         localStorage.removeItem('token');
         alert('Logout berhasil!');
         location.hash = '/login';
@@ -114,4 +119,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   updateNavVisibility();
   window.addEventListener('hashchange', updateNavVisibility);
+
+  registerBackgroundSync();
 });
